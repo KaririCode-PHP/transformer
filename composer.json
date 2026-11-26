@@ -42,7 +42,7 @@
     "support": {
         "issues": "https://github.com/KaririCode-Framework/kariricode-transformer/issues",
         "source": "https://github.com/KaririCode-Framework/kariricode-transformer",
-        "docs": "https://github.com/KaririCode-Framework/kariricode-transformer/blob/develop/README.md",
+        "docs": "https://github.com/KaririCode-PHP/transformer/blob/main/README.md",
         "security": "https://github.com/KaririCode-Framework/kariricode-transformer/security/advisories/new",
         "forum": "https://github.com/orgs/KaririCode-Framework/discussions"
     },
