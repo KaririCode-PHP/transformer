@@ -25,24 +25,37 @@ final readonly class UnflattenRule implements TransformationRule
         }
         $separator = (\is_string($_p = $context->getParameter('separator', '.')) ? $_p : '.');
         $sep = $separator !== '' ? $separator : '.';
-        /** @var array<string, mixed> $result */
         $result = [];
 
         foreach ($value as $key => $val) {
-            $keys = explode($sep, (string) $key);
-            $ref = &$result;
-            foreach ($keys as $segment) {
-                if (! \array_key_exists($segment, (array) $ref) || ! \is_array($ref[$segment])) {
-                    $ref[$segment] = [];
-                }
-                /** @var array<string, mixed> $ref */
-                $ref = &$ref[$segment];
-            }
-            $ref = $val;
-            unset($ref);
+            $result = $this->assignPath($result, explode($sep, (string) $key), $val);
         }
 
         return $result;
+    }
+
+    /**
+     * Writes $value at the nested $path, replacing any non-array node along the way.
+     *
+     * @param array<array-key, mixed> $target
+     * @param list<string>            $path
+     *
+     * @return array<array-key, mixed>
+     */
+    private function assignPath(array $target, array $path, mixed $value): array
+    {
+        $segment = (string) array_shift($path);
+
+        if ($path === []) {
+            $target[$segment] = $value;
+
+            return $target;
+        }
+
+        $child = $target[$segment] ?? null;
+        $target[$segment] = $this->assignPath(\is_array($child) ? $child : [], $path, $value);
+
+        return $target;
     }
 
     #[\Override]
