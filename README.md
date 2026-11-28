@@ -1,395 +1,292 @@
 # KaririCode Transformer
 
-<div align="center">
+[![CI](https://github.com/KaririCode-PHP/transformer/actions/workflows/ci.yml/badge.svg)](https://github.com/KaririCode-PHP/transformer/actions/workflows/ci.yml)
+![PHP 8.4+](https://img.shields.io/badge/PHP-8.4%2B-777BB4)
+![ARFA 1.3 level 1](https://img.shields.io/badge/ARFA-1.3%20level%201-blue)
+![License MIT](https://img.shields.io/badge/license-MIT-green)
 
-[![CI](https://github.com/KaririCode-Framework/kariricode-transformer/actions/workflows/ci.yml/badge.svg)](https://github.com/KaririCode-Framework/kariricode-transformer/actions/workflows/ci.yml)
-[![PHP 8.4+](https://img.shields.io/badge/PHP-8.4%2B-777BB4?logo=php&logoColor=white)](https://www.php.net/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-22c55e.svg)](LICENSE)
-[![PHPStan Level 9](https://img.shields.io/badge/PHPStan-Level%209-4F46E5)](https://phpstan.org/)
-[![Psalm](https://img.shields.io/badge/Psalm-Level%201-4F46E5)](https://psalm.dev/)
-[![Tests](https://img.shields.io/badge/Tests-100%25_pass-22c55e)](tests/)
-[![Coverage](https://img.shields.io/badge/Coverage-100%25-22c55e)](tests/)
-[![Rules](https://img.shields.io/badge/Rules-32-22c55e)](docs/spec/SPEC-002-rule-reference.md)
-[![ARFA](https://img.shields.io/badge/ARFA-1.3-F97316)](https://kariricode.org)
-[![KaririCode Framework](https://img.shields.io/badge/KaririCode-Framework-F97316)](https://kariricode.org)
+Rule-based data transformation for PHP 8.4: 32 built-in rules — case
+conversion, masking, CSV per RFC 4180, JSON, Base64 and hashes, dates,
+numbers in words, array restructuring and Brazilian documents, the
+alphanumeric CNPJ included — applied to arrays by a rule map or to
+readonly DTOs by `#[Transform]` attributes. Rules run in order, every
+change is recorded, nested fields stay nested, and a value a rule
+cannot convert without loss comes back as it went in; a rule written
+down wrongly is the application's mistake and throws a coded exception.
+Part of the KaririCode Framework; Spec V4.3.3, ARFA 1.3 level 1.
 
-**Composable, rule-based data transformation engine for PHP 8.4+.**  
-32 built-in rules · case conversion · Brazilian formats · #[Transform] attributes · zero dependencies.
+## 1. Features
 
-[Installation](#installation) · [Quick Start](#quick-start) · [Attribute API](#attribute-driven-dto-transformation) · [All 32 Rules](#all-32-rules) · [CI Integration](#ci-integration) · [Architecture](#architecture)
+- **32 rules** in seven groups: string, data, encoding, date, numeric,
+  structure, Brazilian (SPEC-002).
+- **Case conversion by words** — one Unicode-aware splitter for
+  camel, Pascal, snake and kebab case, so "helloWorld", "HTTPServer"
+  and "São Paulo" convert as people read them (ADR-005).
+- **Lossless** — RFC 4180 CSV with quoted line breaks, big JSON
+  integers kept as strings, no record dropped or cut, strict dates in an
+  explicit time zone; what cannot be converted whole comes back
+  unchanged (ADR-008).
+- **Chained rules, recorded changes** — each rule receives the previous
+  one's output; every change is a `FieldTransformation` (field, rule,
+  before, after) in an immutable result (ADR-002).
+- **Rule maps** — an alias (`'snake_case'`), a rule instance, or
+  `[alias or rule, parameters]`; fields by dotted path, written back
+  where they were read; absent fields are not created.
+- **Attributes** — `#[Transform]` on a DTO, read through the
+  kariricode/contract `PropertyInspector` and written into a **copy**
+  through the `PropertyChangeApplier`, so readonly DTOs work;
+  kariricode/property-inspector 3 implements both (ADR-003).
+- **Strict parameters** — a negative count, an unknown hash algorithm,
+  a CSV separator of two characters throw `InvalidRuleException` with a
+  TRF code, whatever the input (ADR-004).
+- **Integrations** — a kariricode/contract `Processor` and
+  `Transformer` for pipelines, a `ServiceProvider` for containers, an
+  observer that receives start and completion events (ADR-006).
+- **No dependencies** beyond kariricode/contract and
+  kariricode/exception.
 
-</div>
-
----
-
-## The Problem
-
-Data flowing through your application constantly needs reshaping — inconsistent casing, incoming formats that don't match your domain, and repetitive string operations scattered across layers:
-
-```php
-// Manual transformation noise — repeated everywhere
-$slug    = strtolower(preg_replace('/\s+/', '-', trim($name)));
-$camel   = lcfirst(str_replace(' ', '', ucwords(str_replace('_', ' ', $snake))));
-$cpf     = preg_replace('/\D/', '', $cpf); // strip mask
-$date    = (new \DateTime($rawDate))->format('Y-m-d');
-// 👆 Duplicated across controllers, jobs, mappers — no single contract
-```
-
-## The Solution
-
-```php
-use KaririCode\Transformer\Provider\TransformerServiceProvider;
-
-$engine = (new TransformerServiceProvider())->createEngine();
-
-$result = $engine->transform(
-    data: [
-        'name'    => '  walmir silva  ',
-        'cpf'     => '123.456.789-01',
-        'joinedAt'=> '2025-06-15',
-        'bio'     => '  Developer and  creator  ',
-    ],
-    fieldRules: [
-        'name'     => ['trim', 'capitalize'],
-        'cpf'      => ['remove_non_numeric'],
-        'joinedAt' => [['date.format', ['from' => 'Y-m-d', 'to' => 'd/m/Y']]],
-        'bio'      => ['trim', 'normalize_whitespace', ['truncate', ['length' => 100]]],
-    ],
-);
-
-// $result->get('name')     === "Walmir Silva"
-// $result->get('cpf')      === "12345678901"
-// $result->get('joinedAt') === "15/06/2025"
-// $result->get('bio')      === "Developer and creator"
-```
-
----
-
-## Features
-
-- ✅ **32 built-in rules** across 6 categories (String, Date, Numeric, Brazilian, Structure, Encoding)
-- ✅ **Case conversion** — `camel_case`, `snake_case`, `pascal_case`, `kebab_case`
-- ✅ **Brazilian formats** — CPF mask/unmask, CNPJ, CEP, phone number
-- ✅ **Attribute-driven API** — annotate DTOs with `#[Transform]`
-- ✅ **Rule chaining** — output of rule N becomes input of rule N+1
-- ✅ **Zero external dependencies** — only `kariricode/property-inspector` for reflection
-- ✅ **PHPStan Level 9 + Psalm Level 1** — full static-analysis compliance
-- ✅ **100% test coverage** — 100% Classes/Methods/Lines
-- ✅ **ARFA 1.3 compliant** — `final readonly` domain classes, immutable context
-
----
-
-## Requirements
-
-| Requirement | Version |
-|-------------|---------|
-| PHP | 8.4+ |
-| Composer | 2.x |
-| kariricode/property-inspector | ^2.0 |
-
----
-
-## Installation
+## 2. Installation
 
 ```bash
 composer require kariricode/transformer
+composer require kariricode/property-inspector   # only for #[Transform] on objects
 ```
 
----
+PHP 8.4 or later.
 
-## Quick Start
-
-### 1. Engine API
+## 3. Quick Start
 
 ```php
-use KaririCode\Transformer\Provider\TransformerServiceProvider;
+<?php
 
-$engine = (new TransformerServiceProvider())->createEngine();
+declare(strict_types=1);
+
+use KaririCode\Transformer\Core\TransformerEngine;
+
+require __DIR__ . '/vendor/autoload.php';
+
+$engine = new TransformerEngine();
 
 $result = $engine->transform(
-    data:       ['title' => '  hello world  ', 'slug' => 'Hello World!'],
-    fieldRules: ['title' => ['trim', 'capitalize'], 'slug' => ['slug']],
+    [
+        'column' => 'First Name',
+        'cnpj' => '12.ABC.345/01DE-35',
+        'phone' => '+55 88 99999 0000',
+        'settings' => '{"theme": {"mode": "dark"}, "order": 12345678901234567890}',
+        'import' => "name,note\r\nAna,\"a, b\"\r\n",
+        'total' => 1234,
+    ],
+    [
+        'column' => ['snake_case'],
+        'cnpj' => ['cnpj_to_digits'],
+        'phone' => ['phone_format'],
+        'settings' => ['json_decode', 'flatten'],
+        'import' => ['csv_to_array'],
+        'total' => ['number_to_words'],
+        'missing' => ['camel_case'],
+    ],
 );
 
-echo $result->get('title'); // "Hello World"
-echo $result->get('slug');  // "hello-world"
+echo json_encode($result->transformed, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), PHP_EOL;
 ```
 
-### 2. Attribute API (DTO-driven)
+```json
+{
+    "column": "first_name",
+    "cnpj": "12ABC34501DE35",
+    "phone": "(88) 99999-0000",
+    "settings": {
+        "theme.mode": "dark",
+        "order": "12345678901234567890"
+    },
+    "import": [
+        {
+            "name": "Ana",
+            "note": "a, b"
+        }
+    ],
+    "total": "one thousand two hundred and thirty-four"
+}
+```
+
+The order number keeps all its digits, the quoted comma stays in its
+field, and `missing` is not in the input, so it is not created.
+`$result->transformedFields()` lists the six fields that changed.
+
+## 4. Rule Maps
+
+A rule map lists, per field, the rule definitions to apply in order:
+
+| Definition | Example |
+|---|---|
+| alias | `'snake_case'` |
+| rule instance | `new MaskRule()` |
+| alias with parameters | `['csv_to_array', ['separator' => ';']]` |
+| rule with parameters | `[new MaskRule(), ['keep_start' => 0, 'keep_end' => 4]]` |
+
+Field names are dotted paths into nested arrays; a key that contains
+dots itself is matched first. Every definition is checked before the
+data is read, so a misspelled alias throws even for a field this input
+lacks.
+
+Register your own rules under an alias:
 
 ```php
+use KaririCode\Transformer\Contract\TransformationContext;
+use KaririCode\Transformer\Contract\TransformationRule;
+
+final readonly class UpperRule implements TransformationRule
+{
+    public function transform(mixed $value, TransformationContext $context): mixed
+    {
+        return is_string($value) ? mb_strtoupper($value, 'UTF-8') : $value;
+    }
+
+    public function name(): string
+    {
+        return 'app.upper';
+    }
+}
+
+$engine->registry->register('upper', new UpperRule());
+```
+
+## 5. The Rules
+
+| Group | Aliases |
+|---|---|
+| String | camel_case, pascal_case, snake_case, kebab_case, mask, reverse, repeat |
+| Data | json_encode, json_decode, csv_to_array, array_to_key_value, implode |
+| Encoding | base64_encode, base64_decode, hash |
+| Date | date_to_timestamp, date_to_iso8601, age, relative_date |
+| Numeric | currency_format, percentage, ordinal, number_to_words |
+| Structure | flatten, unflatten, pluck, group_by, rename_keys |
+| Brazilian | cpf_to_digits, cnpj_to_digits, cep_to_digits, phone_format |
+
+[SPEC-002](docs/spec/SPEC-002-rule-reference.md) lists each rule's
+parameters and output. Points worth knowing:
+
+- `csv_to_array` with a header returns the string unchanged when the
+  names repeat or a record has another width, instead of padding or
+  cutting it; check the type you get back.
+- `mask` masks a string too short to keep both ends entirely.
+- The date rules read the text in `timezone` (UTC unless set); `age` and
+  `relative_date` take `now` for a fixed clock.
+- `cnpj_to_digits` keeps letters (IN RFB nº 2.229/2024); the document
+  rules convert the shapes kariricode/validator accepts and nothing
+  else, and do not check digits.
+- `hash` is for checksums and fingerprints, not passwords.
+
+## 6. Attributes
+
+```php
+use KaririCode\PropertyInspector\Core\ReflectionChangeApplier;
+use KaririCode\PropertyInspector\Core\ReflectionPropertyInspector;
 use KaririCode\Transformer\Attribute\Transform;
-use KaririCode\Transformer\Provider\TransformerServiceProvider;
+use KaririCode\Transformer\Core\AttributeTransformer;
 
-final class UserDTO
+final readonly class CustomerInput
 {
-    #[Transform('trim', 'lowercase')]
-    public string $email;
-
-    #[Transform('trim', 'capitalize')]
-    public string $name;
-
-    #[Transform('remove_non_numeric')]
-    public string $cpf;
-
-    #[Transform([['truncate', ['length' => 160, 'suffix' => '…']]])]
-    public string $bio;
+    public function __construct(
+        #[Transform('cpf_to_digits')]
+        public string $cpf,
+        #[Transform('phone_format')]
+        public string $phone,
+        #[Transform(['mask', ['keep_start' => 0, 'keep_end' => 4]])]
+        public string $card,
+        #[Transform('json_decode')]
+        public string|array $preferences = '{}',
+    ) {}
 }
 
-$provider    = new TransformerServiceProvider();
-$transformer = $provider->createAttributeTransformer($provider->createConfiguration());
+$transformer = new AttributeTransformer($engine, new ReflectionPropertyInspector(), new ReflectionChangeApplier());
 
-$result = $transformer->transform($dto);
+$transformed = $transformer->transform($input);
+$converted = $transformed->object;   // a new CustomerInput; $input is unchanged
+$transformed->result;                // the TransformationResult, with the record of changes
 ```
 
----
+`#[Transform]` takes positional definitions only; named arguments
+throw. Only properties whose value changed are written into the copy;
+when nothing changed, `$transformed->object` is the original instance.
+The copy is built without running the constructor, so validate the
+copy. A property that a rule turns into another type must declare it
+(`string|array` above).
 
-## Real-World Use Cases
+## 7. Results
 
-### Use Case 1 — User Profile Form Submission
+`TransformationResult` holds `original`, `transformed` and
+`transformations`: `get('settings.theme')`, `wasTransformed()`,
+`isFieldTransformed()`, `transformedFields()`, `transformationsFor()`,
+`transformationCount()`.
 
 ```php
-final class ProfileUpdateDTO
-{
-    #[Transform('trim', 'lowercase')]
-    public string $email;
-
-    #[Transform('trim', 'capitalize')]
-    public string $fullName;
-
-    #[Transform('slug')]
-    public string $username;
-
-    #[Transform('trim', 'normalize_whitespace', ['truncate', ['length' => 500]])]
-    public string $bio;
-}
+$engine = new TransformerEngine(configuration: new TransformerConfiguration(trackTransformations: false));
 ```
 
-### Use Case 2 — Brazilian Document Formatting
+Without tracking, values are transformed the same and no
+`FieldTransformation` is kept — useful for bulk imports of large values.
+
+## 8. Exceptions
+
+Input never makes a rule throw. Exceptions are for mistakes in the
+rules and for the processor's input type; every exception implements
+`TransformerException` and carries a code from TRF 3400–3499:
+
+| Code | Exception | Family | Meaning |
+|---|---|---|---|
+| 3401–3406 | InvalidRuleException | Configuration | duplicate or unknown alias, malformed definition, missing or invalid parameter, named attribute arguments |
+| 3420 | ConfigurationException | Configuration | a container binding of the wrong type |
+| 3440 | UnsupportedInputException | Validation | the processor received something other than an array |
+
+## 9. Integrations
 
 ```php
-$engine->transform(
-    data: [
-        'cpf'   => '123.456.789-01',
-        'cnpj'  => '12.345.678/0001-99',
-        'phone' => '(11) 9 9999-9999',
-        'cep'   => '01310-200',
-    ],
-    fieldRules: [
-        'cpf'   => ['remove_non_numeric'],   // "12345678901"
-        'cnpj'  => ['remove_non_numeric'],   // "12345678000199"
-        'phone' => ['remove_non_numeric'],   // "11999999999"
-        'cep'   => ['remove_non_numeric'],   // "01310200"
-    ],
-);
+use KaririCode\ProcessorPipeline\Pipeline\Pipeline;
+
+// kariricode/processor-pipeline 2, or anything that takes a contract Processor
+$pipeline = new Pipeline([
+    new TransformationProcessor($engine, ['payload' => ['json_decode']]),
+    new TransformationProcessor($engine, ['payload' => ['flatten']]),
+]);
+$pipeline->process(['payload' => '{"user": {"id": 7}}']);   // ['payload' => ['user.id' => 7]]
+
+// a kariricode/contract container
+(new TransformerServiceProvider())->register($container);
+
+// events, for logs and metrics
+$engine = new TransformerEngine(observer: static fn (object $event) => $dispatcher->dispatch($event));
 ```
 
-### Use Case 3 — API Response Key Normalisation
+The processor returns the transformed array; in a processor-pipeline, a
+stage that throws reaches the caller as `PipelineExecutionException`
+with the stage's exception as `getPrevious()`. The provider binds the
+registry, the engine and the `AttributeTransformer` (bind a
+`PropertyInspector` and a `PropertyChangeApplier` for it). The observer
+receives a `TransformationStartedEvent` (field paths) and a
+`TransformationCompletedEvent` (result, duration in ms); the result
+holds the input, so redact it before logging.
 
-```php
-// External API returns camelCase — your DB expects snake_case
-$engine->transform(
-    data:       $apiPayload,
-    fieldRules: ['firstName' => ['snake_case'], 'lastName' => ['snake_case']],
-);
-// "firstName" → "first_name", "lastName" → "last_name"
-```
+## 10. Security
 
-### Use Case 4 — Date Format Conversion Pipeline
+Transforming is not validating: decode and convert, then validate the
+result before trusting it, and encode at output for the context you
+write into. See [SECURITY.md](SECURITY.md) for the threat model and the
+ASVS 5.0 mapping.
 
-```php
-$engine->transform(
-    data: ['createdAt' => '2025-06-15', 'updatedAt' => '2025-12-01'],
-    fieldRules: [
-        'createdAt' => [['date.format', ['from' => 'Y-m-d', 'to' => 'd/m/Y']]],
-        'updatedAt' => [['date.format', ['from' => 'Y-m-d', 'to' => 'D, d M Y']]],
-    ],
-);
-// "2025-06-15" → "15/06/2025"
-// "2025-12-01" → "Mon, 01 Dec 2025"
-```
+## 11. Architecture and Quality
 
----
+| Gate | Result |
+|---|---|
+| Tests | unit, integration and conformance suites; 100 % of lines covered |
+| Static analysis | PHPStan level max (strict and PHPUnit rules), Psalm error level 1 |
+| Mutation testing | MSI recorded in [QD-V433](docs/quality/QD-V433-COMPLIANCE.md) |
+| Complexity | cyclomatic ≤ 10, nesting ≤ 3, parameters ≤ 4, cognitive ≤ 15 |
 
-## All 32 Rules
+The gates run through KaririCode Devkit (`kcode`); see
+[CONTRIBUTING.md](CONTRIBUTING.md). Design decisions are in
+[docs/adr](docs/adr), the specification in [docs/spec](docs/spec).
 
-### String (14 rules)
-| Alias | Description |
-|-------|-------------|
-| `trim` | Remove surrounding whitespace |
-| `lowercase` / `uppercase` | Case conversion |
-| `capitalize` | Capitalise first letter of each word |
-| `camel_case` | Convert to camelCase |
-| `snake_case` | Convert to snake_case |
-| `pascal_case` | Convert to PascalCase |
-| `kebab_case` | Convert to kebab-case |
-| `slug` | URL-safe slug |
-| `truncate` | Truncate with suffix · `length`, `suffix` |
-| `remove_whitespace` | Remove all whitespace |
-| `normalize_whitespace` | Collapse multiple spaces to one |
-| `remove_special_chars` | Strip non-alphanumeric |
-| `remove_non_numeric` | Digits only |
-| `reverse` | Reverse string characters |
+## 12. License
 
-### Date (4 rules)
-| Alias | Parameters | Description |
-|-------|-----------|-------------|
-| `date.format` | `from`, `to` | Reformat between two format strings |
-| `date.to_timestamp` | — | Date string → Unix timestamp |
-| `date.to_iso` | — | Any parseable date → ISO 8601 |
-| `date.age` | — | Birthdate → current age (integer) |
-
-### Numeric (4 rules)
-| Alias | Parameters | Description |
-|-------|-----------|-------------|
-| `number.round` | `precision: int` | Round to decimal places |
-| `number.abs` | — | Absolute value |
-| `number.clamp` | `min`, `max` | Clamp to value range |
-| `number.format` | `decimals`, `dec_sep`, `thou_sep` | Format number |
-
-### Brazilian (4 rules)
-| Alias | Description |
-|-------|-------------|
-| `cpf.mask` | Digits → 000.000.000-00 |
-| `cnpj.mask` | Digits → 00.000.000/0000-00 |
-| `cep.mask` | Digits → 00000-000 |
-| `phone.mask` | Digits → (00) 00000-0000 |
-
-### Encoding (4 rules)
-| Alias | Description |
-|-------|-------------|
-| `encode.base64` / `decode.base64` | Base64 round-trip |
-| `encode.url` / `decode.url` | URL encode/decode |
-
-### Structure (2 rules)
-| Alias | Description |
-|-------|-------------|
-| `json.encode` | Array → JSON string |
-| `json.decode` | JSON string → array |
-
----
-
-## Attribute-Driven DTO Transformation
-
-```php
-use KaririCode\Transformer\Attribute\Transform;
-
-final class NewsArticleDTO
-{
-    #[Transform('trim', 'capitalize')]
-    public string $title;
-
-    #[Transform('slug')]
-    public string $permalink;
-
-    #[Transform('trim', 'html.encode', ['truncate', ['length' => 300, 'suffix' => '…']])]
-    public string $excerpt;
-
-    #[Transform([['date.format', ['from' => 'Y-m-d', 'to' => 'd/m/Y']]])]
-    public string $publishedAt;
-}
-```
-
----
-
-## CI Integration
-
-```yaml
-- name: Run quality pipeline
-  run: |
-    kcode init
-    kcode quality
-```
-
-| Tool | Level | Result |
-|------|-------|--------|
-| `php-cs-fixer` | KaririCode standard | ✅ |
-| `phpstan` | Level 9 | ✅ |
-| `psalm` | Level 1 | ✅ |
-| `phpunit` + `pcov` | 100% coverage | ✅ |
-
----
-
-## Architecture
-
-### Design Decisions
-
-| Decision | Rationale | ADR |
-|----------|-----------|-----|
-| Alias-based rule registry | Decouples engine; custom rules register without subclassing engine | [ADR-001](docs/adr/ADR-001-rule-registry-pattern.md) |
-| `PropertyInspector` for `#[Transform]` | Reflection caching across multiple transform calls | [ADR-002](docs/adr/ADR-002-property-inspector-integration.md) |
-| `TransformationContext` immutability | `final readonly` + builder; prevents cross-field parameter pollution | [ADR-003](docs/adr/ADR-003-transformation-context-immutability.md) |
-| Left-to-right rule chaining | Predictable, order-dependent composition | [ADR-004](docs/adr/ADR-004-rule-chaining.md) |
-| Zero external business deps | PHP 8.4+ built-ins only — ARFA Principle 16 | [ADR-005](docs/adr/ADR-005-zero-external-dependencies.md) |
-
-### Project Stats
-
-| Metric | Value |
-|--------|-------|
-| Rule classes | 32 |
-| External dependencies | 1 (`kariricode/property-inspector`) |
-| Line coverage | 100% |
-| PHPStan level | 9 (0 errors) |
-| Psalm level | 1 (0 errors) |
-
----
-
-## Ecosystem Integration
-
-| Library | Integration |
-|---------|-------------|
-| [kariricode/sanitizer](https://github.com/KaririCode-Framework/kariricode-sanitizer) | Sanitize input before or after transformation |
-| [kariricode/normalizer](https://github.com/KaririCode-Framework/kariricode-normalizer) | `ProcessorBridge` — plug normalizer into transform pipeline |
-| [kariricode/validator](https://github.com/KaririCode-Framework/kariricode-validator) | Validate after transforming into canonical format |
-| [kariricode/property-inspector](https://github.com/KaririCode-Framework/kariricode-property-inspector) | Reflection caching for `#[Transform]` attribute scanning |
-| [kariricode/devkit](https://github.com/KaririCode-PHP/devkit) | `kcode quality` CI pipeline, PHPStan/Psalm/cs-fixer unified runner |
-
----
-
-## Development
-
-This package keeps no QA tools in `require-dev`. [KaririCode Devkit](https://github.com/KaririCode-PHP/devkit) (`kcode`) installs PHPUnit, PHPStan, Psalm, PHP-CS-Fixer and Rector into `.kcode/` (git-ignored) the first time a command needs them.
-
-Install `kcode` once (PHP 8.4+):
-
-```bash
-wget https://github.com/KaririCode-PHP/devkit/releases/latest/download/kcode.phar
-chmod +x kcode.phar
-sudo mv kcode.phar /usr/local/bin/kcode
-```
-
-From the repository root:
-
-```bash
-composer install          # runtime dependencies only
-kcode init                # generate .kcode/ and install the toolchain (first run)
-kcode test                # PHPUnit (--coverage, --suite=Unit, any PHPUnit option)
-kcode analyse             # PHPStan, then Psalm
-kcode cs:fix              # apply the code style (--check reports only)
-kcode quality             # the CI gate: cs-fixer, PHPStan, Psalm, PHPUnit
-kcode quality --docker    # the same gate inside the kcode PHP container
-```
-
-Project overrides go in `devkit.php` (`kcode init --config` writes a template); run `kcode init` after editing it. `kcode clean --all` removes `.kcode/`.
-
----
-
-## Contributing
-
-1. Fork the repository  
-2. Create a feature branch: `git checkout -b feat/my-rule`  
-3. Run: `kcode quality` — all 4 tools must pass  
-4. Submit a pull request against `main`
-
----
-
-<div align="center">
-
-**Part of the [KaririCode Framework](https://kariricode.org) ecosystem.**
-
-[![GitHub](https://img.shields.io/badge/GitHub-KaririCode-181717?logo=github)](https://github.com/KaririCode-Framework)
-[![Packagist](https://img.shields.io/badge/Packagist-kariricode%2Ftransformer-F28D1A?logo=packagist&logoColor=white)](https://packagist.org/packages/kariricode/transformer)
-
-*Built with ❤️ by [Walmir Silva](https://github.com/walmir-silva) · [kariricode.org](https://kariricode.org)*
-
-</div>
+MIT — see [LICENSE](LICENSE).
