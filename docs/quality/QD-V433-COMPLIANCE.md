@@ -1,22 +1,27 @@
 # QD-V433-COMPLIANCE: kariricode/transformer 3.0.0
 
-- **Status: PENDING** (automated gates)
+- **Status: PASS** (automated gates)
 - **Date:** 2026-11-28
 - **Component:** kariricode/transformer 3.0.0; kariricode/contract ^2.12 (2.12.1 locked), kariricode/exception ^2.0.2 (2.0.2 locked); kariricode/property-inspector ^3.0 suggested
 - **Standards:** KaririCode Spec V4.3.3 §29 (gates) and §32 (supply chain); ARFA 1.3 level 1 (Structural); OWASP ASVS 5.0 level 2
 - **Authors:** Walmir Silva <walmir.silva@kariricode.org>
 
-Every automated gate of §29.1 passes locally (§1); the status turns PASS
-when CI confirms them on the pushed commit, and FAIL if a gate fails.
-PASS covers the automated gates (G1, G4, G5, G6); G3 needs a second
-reviewer (§8). No score is assigned (E-006). This is the first quality
-record of the 3.x line: measured with this release's configurations,
-the September 2026 tarball had 56 PHPStan errors at level max and 136
-Psalm errors at level 1, with no mutation testing.
+Every automated gate of §29.1 passes, locally (§1) and in CI: run
+[46160664247](https://github.com/KaririCode-PHP/transformer/actions/runs/46160664247)
+passed the gates on PHP 8.4.28 and the suites on PHP 8.5.13 with the
+lowest dependencies (kariricode/contract 2.12.0, kariricode/exception
+2.0.2), at `134373c`. The status turns FAIL if a gate fails. PASS covers
+the automated gates (G1, G4, G5, G6); G3 needs a second reviewer (§8).
+No score is assigned (E-006). This is the first quality record of the
+3.x line: measured with this release's configurations, the September
+2026 tarball had 56 PHPStan errors at level max and 136 Psalm errors at
+level 1, with no mutation testing.
 
 ## 1. Gates (Spec V4.3.3 §29.1)
 
-Measured locally on 2026-11-28 (§2).
+Measured locally on 2026-11-28 (§2). CI reported the same tests (460,
+4,143 assertions) and the same mutants (907: 891 killed, 9 timed out,
+3 errored, 4 escaped).
 
 | Gate | Command | Budget | Measured | Result |
 |---|---|---|---|---|
@@ -24,7 +29,7 @@ Measured locally on 2026-11-28 (§2).
 | Conformance | `composer test-conformance` | all pass | 30 tests: `ArfaConformanceTest` 27 (25 rules and 2 documentation checks, §3), `CodeBlockRegistryTest` 3 | pass |
 | PHPStan | `composer phpstan` | level max on `src` and `tests`, strict and PHPUnit rules, cognitive complexity ≤ 15 | 0 errors | pass |
 | Psalm | `composer psalm` | level 1 on `src`, no baseline | 0 errors; `#[\Override]` required; `NoInterfaceProperties` suppressed in `psalm.xml` (tool limitation, ADR-007) | pass |
-| Coding standard | `composer cs-check` | PER-CS (E-045, E-046) | 0 of 83 files to fix | pass |
+| Coding standard | `composer cs-check` | PER-CS (E-045, E-046) | 0 of 81 files to fix | pass |
 | Complexity | `composer complexity`, `composer phpstan` | cyclomatic ≤ 10, nesting ≤ 3, parameters ≤ 4 per method of `src`; cognitive ≤ 15 (§13) | 175 methods; no accepted breach (empty baseline); two soft warnings: `RuleContext` has 12 public methods and `TransformationContext` 11 (soft budget 10), the typed parameter readers | pass |
 | Mutation | `composer mutation` | MSI ≥ 80 and covered-code MSI ≥ 80 (§19.4) | 907 mutants: 891 killed, 9 timed out, 3 errored, 4 escaped; MSI 99.56 %, covered-code MSI 99.56 %; mutation code coverage 100 % (§7) | pass |
 | Security | `composer security` | valid manifest and lock, no advisory, no secret | manifest and lock valid; no advisories in the runtime lock or in `.kcode/composer.lock`; secret scan 0 findings (self-test ok) | pass |
