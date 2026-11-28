@@ -1,29 +1,39 @@
 {
     "name": "kariricode/transformer",
-    "description": "Composable, rule-based data transformation engine for PHP 8.4+ \u2014 32 rules, #[Transform] attributes, case conversion, powered by kariricode/property-inspector. ARFA 1.3.",
+    "description": "Rule-based data transformation for PHP 8.4: 32 built-in rules (case conversion, masking, CSV per RFC 4180, JSON, Base64, hashes, dates, numbers in words, array restructuring and Brazilian documents, the alphanumeric CNPJ included), nested field paths, a record of every change, attribute-driven transformation of readonly DTOs through the kariricode/contract Inspection ports, and a Processor for kariricode/processor-pipeline.",
     "type": "library",
     "license": "MIT",
     "keywords": [
-        "transformer",
-        "data-transformation",
-        "case-conversion",
-        "php84",
         "kariricode",
-        "arfa",
-        "property-inspector"
+        "transformer",
+        "transformation",
+        "case-conversion",
+        "csv",
+        "json",
+        "dto",
+        "attributes"
     ],
+    "homepage": "https://github.com/KaririCode-PHP/transformer",
     "authors": [
         {
             "name": "Walmir Silva",
             "email": "walmir.silva@kariricode.org",
-            "homepage": "https://github.com/walmir-silva",
-            "role": "Lead Developer"
+            "homepage": "https://kariricode.org",
+            "role": "Lead Architect"
         }
     ],
-    "homepage": "https://kariricode.org",
+    "support": {
+        "issues": "https://github.com/KaririCode-PHP/transformer/issues",
+        "source": "https://github.com/KaririCode-PHP/transformer",
+        "security": "https://github.com/KaririCode-PHP/transformer/security/policy"
+    },
     "require": {
         "php": "^8.4",
-        "kariricode/property-inspector": "^2.0"
+        "kariricode/contract": "^2.12",
+        "kariricode/exception": "^2.0.2"
+    },
+    "suggest": {
+        "kariricode/property-inspector": "Implements the kariricode/contract PropertyInspector and PropertyChangeApplier that AttributeTransformer reads #[Transform] attributes and writes transformed copies with (^3.0)"
     },
     "autoload": {
         "psr-4": {
@@ -35,30 +45,57 @@
             "KaririCode\\Transformer\\Tests\\": "tests/"
         }
     },
+    "scripts": {
+        "test": "kcode test",
+        "test-unit": "kcode test --testsuite=unit,integration",
+        "test-conformance": "kcode test --testsuite=conformance",
+        "phpstan": "kcode run phpstan analyse --no-progress --memory-limit=1G",
+        "psalm": "kcode run psalm --no-cache --show-info=false",
+        "complexity": "@php tools/complexity.php",
+        "mutation": [
+            "Composer\\Config::disableProcessTimeout",
+            "kcode run infection --threads=max --only-covering-test-cases --no-progress --show-mutations=0"
+        ],
+        "security": [
+            "@composer validate --strict",
+            "@composer audit --locked",
+            "@composer audit --locked --working-dir=.kcode",
+            "@php tools/secret-scan.php",
+            "@php tools/secret-scan.php --self-test"
+        ],
+        "sbom": "@php tools/sbom.php sbom.cdx.json",
+        "cs-check": "kcode cs:fix --check",
+        "cs-fix": "kcode cs:fix",
+        "check": [
+            "@cs-check",
+            "@phpstan",
+            "@psalm",
+            "@complexity",
+            "@test",
+            "@mutation"
+        ]
+    },
     "config": {
         "sort-packages": true,
         "optimize-autoloader": true
     },
-    "support": {
-        "issues": "https://github.com/KaririCode-Framework/kariricode-transformer/issues",
-        "source": "https://github.com/KaririCode-Framework/kariricode-transformer",
-        "docs": "https://github.com/KaririCode-PHP/transformer/blob/main/README.md",
-        "security": "https://github.com/KaririCode-Framework/kariricode-transformer/security/advisories/new",
-        "forum": "https://github.com/orgs/KaririCode-Framework/discussions"
-    },
     "minimum-stability": "stable",
     "prefer-stable": true,
-    "funding": [
-        {
-            "type": "github",
-            "url": "https://github.com/sponsors/walmir-silva"
-        }
-    ],
     "extra": {
-        "arfa": {
-            "level": 1,
-            "conformance": "Structural (P1, P4, P5)",
-            "version": "1.3"
+        "kariricode": {
+            "arfa": {
+                "version": "1.3",
+                "level": 1
+            },
+            "asvs": {
+                "version": "5.0",
+                "level": 2
+            },
+            "spec": "4.3.3",
+            "error-code-range": "TRF 3400–3499"
+        },
+        "branch-alias": {
+            "dev-main": "3.x-dev"
         }
     }
 }
