@@ -4,27 +4,66 @@ declare(strict_types=1);
 
 namespace KaririCode\Transformer\Contract;
 
+// ── Contract: TransformationContext ──────────────────────────────────
+// What a rule may read besides the value: the field, the data, its parameters.
+// ─────────────────────────────────────────────────────────────────────
+
 /**
- * Immutable context passed to each transformation rule.
+ * Gives a rule the name of the field it transforms, every field of the input,
+ * and the parameters of this use of the rule, with readers that check a
+ * parameter's type. A parameter that is missing or of the wrong type is
+ * the application's mistake: the typed readers throw
+ * InvalidRuleException instead of letting a rule cast it.
  *
- * @package KaririCode\Transformer\Contract
- * @author  Walmir Silva <walmir.silva@kariricode.org>
- * @since   3.1.0 ARFA 1.3
+ * Preconditions: field paths use dots for nesting ("address.city"); a
+ * key that contains dots itself is matched first.
+ *
+ * Thread-safety: immutable; the with methods return copies.
+ *
+ * Side effects: none.
+ *
+ * Example:
+ *
+ *     $times = $context->intParameter('times', 2);
+ *     $header = $context->boolParameter('header', true);
+ *
+ * References: ADR-001; SPEC-001 §4.
  */
 interface TransformationContext
 {
-    public function getFieldName(): string;
+    public string $field { get; }
 
-    /** @return array<string, mixed> */
-    public function getRootData(): array;
+    /** @var array<array-key, mixed> */
+    public array $data { get; }
 
-    public function getParameter(string $key, mixed $default = null): mixed;
-
-    /** @return array<string, mixed> */
-    public function getParameters(): array;
+    /** @var array<string, mixed> */
+    public array $parameters { get; }
 
     public function withField(string $field): static;
 
-    /** @param array<string, mixed> $parameters */
+    /**
+     * @param array<string, mixed> $parameters
+     */
     public function withParameters(array $parameters): static;
+
+    public function hasParameter(string $name): bool;
+
+    public function parameter(string $name, mixed $default = null): mixed;
+
+    public function intParameter(string $name, ?int $default = null): int;
+
+    public function numberParameter(string $name, int|float|null $default = null): int|float;
+
+    public function stringParameter(string $name, ?string $default = null): string;
+
+    public function boolParameter(string $name, ?bool $default = null): bool;
+
+    /**
+     * @return array<array-key, mixed>
+     */
+    public function arrayParameter(string $name): array;
+
+    public function hasField(string $path): bool;
+
+    public function fieldValue(string $path): mixed;
 }

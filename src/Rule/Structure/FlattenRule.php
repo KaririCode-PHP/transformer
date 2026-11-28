@@ -6,50 +6,72 @@ namespace KaririCode\Transformer\Rule\Structure;
 
 use KaririCode\Transformer\Contract\TransformationContext;
 use KaririCode\Transformer\Contract\TransformationRule;
+use KaririCode\Transformer\Exception\InvalidRuleException;
 
-/** Flattens a nested array with dot-notation keys. Parameters: separator (string, '.'). */
+// ── Rule: FlattenRule ────────────────────────────────────────────────
+// Turns nested arrays into one level with joined keys.
+// ─────────────────────────────────────────────────────────────────────
+
 /**
- * Flattens a multi-dimensional array to a single level.
+ * Replaces nested arrays by their leaves, keyed by the path joined with
+ * 'separator' ("." unless set): ['a' => ['b' => 1]] becomes
+ * ['a.b' => 1]. Empty arrays are leaves and stay. When two paths
+ * would end in the same key (a key "a.b" next to ['a' => ['b' => …]]),
+ * the array is returned unchanged instead of losing one of them.
  *
- * @package KaririCode\Transformer\Rule\Structure
- * @author  Walmir Silva <walmir.silva@kariricode.org>
- * @since   3.1.0 ARFA 1.3
+ * Preconditions: 'separator' is a non-empty string.
+ *
+ * Thread-safety: stateless.
+ *
+ * Side effects: none.
+ *
+ * Example:
+ *
+ *     ['settings' => ['flatten']]
+ *
+ * References: ADR-008; SPEC-002 §6.
  */
 final readonly class FlattenRule implements TransformationRule
 {
     #[\Override]
     public function transform(mixed $value, TransformationContext $context): mixed
     {
-        if (! \is_array($value)) {
-            return $value;
-        }
-        $separator = (\is_string($_p = $context->getParameter('separator', '.')) ? $_p : '');
+        $separator = $context->stringParameter('separator', '.');
 
-        return $this->flattenArray($value, '', $separator);
+        if ($separator === '') {
+            throw InvalidRuleException::invalidParameter(field: $context->field, parameter: 'separator', expected: 'a non-empty string');
+        }
+
+        return is_array($value) ? self::leaves(array: $value, prefix: null, separator: $separator) ?? $value : $value;
     }
 
     #[\Override]
-    public function getName(): string
+    public function name(): string
     {
         return 'structure.flatten';
     }
 
     /**
-     * @param array<mixed> $array
-     * @return array<string, mixed>
+     * @param array<array-key, mixed> $array
+     *
+     * @return array<array-key, mixed>|null null when two paths collide
      */
-    private function flattenArray(array $array, string $prefix, string $separator): array
+    private static function leaves(array $array, ?string $prefix, string $separator): ?array
     {
-        $result = [];
-        foreach ($array as $key => $val) {
-            $fullKey = $prefix !== '' ? $prefix . $separator . $key : (string) $key;
-            if (\is_array($val)) {
-                $result = [...$result, ...$this->flattenArray($val, $fullKey, $separator)];
-            } else {
-                $result[$fullKey] = $val;
+        $leaves = [];
+
+        /** @var mixed $item */
+        foreach ($array as $key => $item) {
+            $path = $prefix === null ? (string) $key : $prefix . $separator . $key;
+            $part = is_array($item) && $item !== [] ? self::leaves(array: $item, prefix: $path, separator: $separator) : [$path => $item];
+
+            if ($part === null || array_intersect_key($leaves, $part) !== []) {
+                return null;
             }
+
+            $leaves += $part;
         }
 
-        return $result;
+        return $leaves;
     }
 }

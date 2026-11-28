@@ -6,28 +6,40 @@ namespace KaririCode\Transformer\Rule\String;
 
 use KaririCode\Transformer\Contract\TransformationContext;
 use KaririCode\Transformer\Contract\TransformationRule;
+use KaririCode\Transformer\Core\Words;
+
+// ── Rule: PascalCaseRule ─────────────────────────────────────────────
+// Writes a phrase or an identifier in PascalCase.
+// ─────────────────────────────────────────────────────────────────────
 
 /**
- * Converts a string to PascalCase.
+ * Splits the string into words (at separators and at the case changes
+ * of an identifier, Unicode letters included) and joins them
+ * capitalized: "user first_name" becomes "UserFirstName", "élan vital"
+ * becomes "ÉlanVital".
  *
- * @package KaririCode\Transformer\Rule\String
- * @author  Walmir Silva <walmir.silva@kariricode.org>
- * @since   3.1.0 ARFA 1.3
+ * Preconditions: none; other types are returned unchanged.
+ *
+ * Thread-safety: stateless.
+ *
+ * Side effects: none.
+ *
+ * Example:
+ *
+ *     ['class' => ['pascal_case']]
+ *
+ * References: ADR-005; SPEC-002 §1.
  */
 final readonly class PascalCaseRule implements TransformationRule
 {
     #[\Override]
     public function transform(mixed $value, TransformationContext $context): mixed
     {
-        if (! \is_string($value)) {
-            return $value;
-        }
-
-        return str_replace(['-', '_', ' '], '', ucwords(mb_strtolower($value, 'UTF-8'), '-_ '));
+        return is_string($value) ? implode('', array_map(Words::capitalize(...), Words::of($value))) : $value;
     }
 
     #[\Override]
-    public function getName(): string
+    public function name(): string
     {
         return 'string.pascal_case';
     }

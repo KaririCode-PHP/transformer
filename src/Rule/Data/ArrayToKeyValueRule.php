@@ -7,42 +7,59 @@ namespace KaririCode\Transformer\Rule\Data;
 use KaririCode\Transformer\Contract\TransformationContext;
 use KaririCode\Transformer\Contract\TransformationRule;
 
-/** Transforms a list of objects/arrays into a key→value map. Parameters: key, value. */
+// ── Rule: ArrayToKeyValueRule ────────────────────────────────────────
+// Turns a list of records into a map of one field to another.
+// ─────────────────────────────────────────────────────────────────────
+
 /**
- * Converts an indexed array of [key, value] pairs to an associative array.
+ * Maps each record's 'key' field ("id" unless set) to its 'value' field
+ * ("name" unless set), like array_column(): a later record with the
+ * same key replaces an earlier one. The list is returned unchanged when
+ * a record is not an array, lacks either field, or has a key that is
+ * not an integer or a string, rather than dropping records silently.
  *
- * @package KaririCode\Transformer\Rule\Data
- * @author  Walmir Silva <walmir.silva@kariricode.org>
- * @since   3.1.0 ARFA 1.3
+ * Preconditions: 'key' and 'value', when given, are strings.
+ *
+ * Thread-safety: stateless.
+ *
+ * Side effects: none.
+ *
+ * Example:
+ *
+ *     ['countries' => [['array_to_key_value', ['key' => 'code', 'value' => 'name']]]]
+ *
+ * References: PHP array_column(); ADR-008; SPEC-002 §2.
  */
 final readonly class ArrayToKeyValueRule implements TransformationRule
 {
     #[\Override]
     public function transform(mixed $value, TransformationContext $context): mixed
     {
-        if (! \is_array($value)) {
+        $keyField = $context->stringParameter('key', 'id');
+        $valueField = $context->stringParameter('value', 'name');
+
+        if (!is_array($value)) {
             return $value;
         }
 
-        $keyField = (\is_string($_p = $context->getParameter('key', 'id')) ? $_p : '');
-        $valueField = (\is_string($_p = $context->getParameter('value', 'name')) ? $_p : '');
-
-        $map = [];
-        foreach ($value as $item) {
-            if (\is_array($item) && \array_key_exists($keyField, $item) && \array_key_exists($valueField, $item)) {
-                $k = $item[$keyField];
-                if (\is_int($k) || \is_string($k)) {
-                    $map[$k] = $item[$valueField];
-                }
+        /** @var mixed $record */
+        foreach ($value as $record) {
+            if (!is_array($record) || !array_key_exists($valueField, $record) || !self::isKey($record[$keyField] ?? null)) {
+                return $value;
             }
         }
 
-        return $map;
+        return array_column(array: $value, column_key: $valueField, index_key: $keyField);
     }
 
     #[\Override]
-    public function getName(): string
+    public function name(): string
     {
         return 'data.array_to_key_value';
+    }
+
+    private static function isKey(mixed $key): bool
+    {
+        return is_int($key) || is_string($key);
     }
 }

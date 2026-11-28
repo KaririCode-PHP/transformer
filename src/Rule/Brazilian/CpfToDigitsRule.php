@@ -7,29 +7,40 @@ namespace KaririCode\Transformer\Rule\Brazilian;
 use KaririCode\Transformer\Contract\TransformationContext;
 use KaririCode\Transformer\Contract\TransformationRule;
 
-/** Strips formatting from CPF: "529.982.247-25" → "52998224725". */
+// ── Rule: CpfToDigitsRule ────────────────────────────────────────────
+// Writes a CPF as its 11 digits.
+// ─────────────────────────────────────────────────────────────────────
+
 /**
- * Extracts only digits from a CPF string.
+ * Removes the dots and the hyphen from a CPF written bare or formatted
+ * (each separator optional: 123.456.789-09, 12345678909); any other
+ * string is returned unchanged. It does not check the digits: validate
+ * with kariricode/validator's cpf rule.
  *
- * @package KaririCode\Transformer\Rule\Brazilian
- * @author  Walmir Silva <walmir.silva@kariricode.org>
- * @since   3.1.0 ARFA 1.3
+ * Preconditions: none; other types are returned unchanged.
+ *
+ * Thread-safety: stateless.
+ *
+ * Side effects: none.
+ *
+ * Example:
+ *
+ *     ['cpf' => ['cpf_to_digits']]
+ *
+ * References: Receita Federal do Brasil, CPF; SPEC-002 §7.
  */
 final readonly class CpfToDigitsRule implements TransformationRule
 {
     #[\Override]
     public function transform(mixed $value, TransformationContext $context): mixed
     {
-        if (! \is_string($value)) {
-            return $value;
-        }
-        $digits = preg_replace('/\D/', '', $value) ?? '';
-
-        return \strlen($digits) === 11 ? $digits : $value;
+        return is_string($value) && preg_match('/\A\d{3}\.?\d{3}\.?\d{3}-?\d{2}\z/', $value) === 1
+            ? str_replace(search: ['.', '-'], replace: '', subject: $value)
+            : $value;
     }
 
     #[\Override]
-    public function getName(): string
+    public function name(): string
     {
         return 'brazilian.cpf_to_digits';
     }

@@ -4,27 +4,44 @@ declare(strict_types=1);
 
 namespace KaririCode\Transformer\Contract;
 
+// ── Contract: TransformationRule ─────────────────────────────────────
+// One conversion of a value into another form.
+// ─────────────────────────────────────────────────────────────────────
+
 /**
- * Core transformation rule contract.
+ * Returns the value in another form (another case, format, encoding or
+ * structure) and names itself for the record of changes. A rule returns
+ * values it does not handle, or cannot convert without loss, unchanged
+ * instead of throwing, so rules chain safely; it never fails because of
+ * the input. Rules hold no state between calls: whatever varies per use
+ * comes in the context's parameters.
  *
- * Each rule converts a value from one representation to another.
- * Unlike Sanitizer (which cleans), Transformer changes the semantic
- * form of data: format, structure, encoding, or type.
+ * Preconditions: transform() receives any value, including null.
  *
- * @package KaririCode\Transformer\Contract
- * @author  Walmir Silva <walmir.silva@kariricode.org>
- * @since   3.1.0 ARFA 1.3
+ * Thread-safety: implementations must be stateless.
+ *
+ * Side effects: none.
+ *
+ * Example:
+ *
+ *     final readonly class CollapseDashesRule implements TransformationRule
+ *     {
+ *         public function transform(mixed $value, TransformationContext $context): mixed
+ *         {
+ *             return is_string($value) ? preg_replace(pattern: '/-{2,}/', replacement: '-', subject: $value) ?? '' : $value;
+ *         }
+ *
+ *         public function name(): string
+ *         {
+ *             return 'custom.collapse_dashes';
+ *         }
+ *     }
+ *
+ * References: ADR-001; SPEC-001 §3.
  */
 interface TransformationRule
 {
-    /**
-     * Transform a value and return the new representation.
-     *
-     * Must be pure: same input + context → same output.
-     * Must NOT throw exceptions for untransformable input — return as-is.
-     */
     public function transform(mixed $value, TransformationContext $context): mixed;
 
-    /** Rule identifier for registry and logging. */
-    public function getName(): string;
+    public function name(): string;
 }

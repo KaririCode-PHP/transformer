@@ -4,12 +4,27 @@ declare(strict_types=1);
 
 namespace KaririCode\Transformer\Contract;
 
+// ── Contract: RuleRegistry ───────────────────────────────────────────
+// Rules by alias, so definitions can name them.
+// ─────────────────────────────────────────────────────────────────────
+
 /**
- * Contract for transformation rule registries.
+ * Maps the aliases rule definitions use ('snake_case', 'json_decode') to rule
+ * instances. Registration is part of setting the engine up; resolving
+ * happens on every transformation.
  *
- * @package KaririCode\Transformer\Contract
- * @author  Walmir Silva <walmir.silva@kariricode.org>
- * @since   3.1.0 ARFA 1.3
+ * Preconditions: an alias is registered once.
+ *
+ * Thread-safety: implementations decide; register before sharing.
+ *
+ * Side effects: register() changes the registry.
+ *
+ * Example:
+ *
+ *     $registry->register('collapse_dashes', new CollapseDashesRule());
+ *     $rule = $registry->resolve('collapse_dashes');
+ *
+ * References: ADR-001; SPEC-002.
  */
 interface RuleRegistry
 {
@@ -19,6 +34,8 @@ interface RuleRegistry
 
     public function has(string $alias): bool;
 
-    /** @return list<string> */
+    /**
+     * @return list<string>
+     */
     public function aliases(): array;
 }

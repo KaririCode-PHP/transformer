@@ -4,116 +4,81 @@ declare(strict_types=1);
 
 namespace KaririCode\Transformer\Provider;
 
+use Closure;
+use KaririCode\Contract\DI\BindableContainer;
+use KaririCode\Contract\DI\ServiceProvider;
+use KaririCode\Contract\Inspection\PropertyChangeApplier;
+use KaririCode\Contract\Inspection\PropertyInspector;
 use KaririCode\Transformer\Configuration\TransformerConfiguration;
+use KaririCode\Transformer\Contract\RuleRegistry;
 use KaririCode\Transformer\Core\AttributeTransformer;
 use KaririCode\Transformer\Core\InMemoryRuleRegistry;
 use KaririCode\Transformer\Core\TransformerEngine;
-use KaririCode\Transformer\Rule\Brazilian\CepToDigitsRule;
-use KaririCode\Transformer\Rule\Brazilian\CnpjToDigitsRule;
-use KaririCode\Transformer\Rule\Brazilian\CpfToDigitsRule;
-use KaririCode\Transformer\Rule\Brazilian\PhoneFormatRule;
-use KaririCode\Transformer\Rule\Data\ArrayToKeyValueRule;
-use KaririCode\Transformer\Rule\Data\CsvToArrayRule;
-use KaririCode\Transformer\Rule\Data\ImplodeRule;
-use KaririCode\Transformer\Rule\Data\JsonDecodeRule;
-use KaririCode\Transformer\Rule\Data\JsonEncodeRule;
-use KaririCode\Transformer\Rule\Date\AgeRule;
-use KaririCode\Transformer\Rule\Date\DateToIso8601Rule;
-use KaririCode\Transformer\Rule\Date\DateToTimestampRule;
-use KaririCode\Transformer\Rule\Date\RelativeDateRule;
-use KaririCode\Transformer\Rule\Encoding\Base64DecodeRule;
-use KaririCode\Transformer\Rule\Encoding\Base64EncodeRule;
-use KaririCode\Transformer\Rule\Encoding\HashRule;
-use KaririCode\Transformer\Rule\Numeric\CurrencyFormatRule;
-use KaririCode\Transformer\Rule\Numeric\NumberToWordsRule;
-use KaririCode\Transformer\Rule\Numeric\OrdinalRule;
-use KaririCode\Transformer\Rule\Numeric\PercentageRule;
-use KaririCode\Transformer\Rule\String\CamelCaseRule;
-use KaririCode\Transformer\Rule\String\KebabCaseRule;
-use KaririCode\Transformer\Rule\String\MaskRule;
-use KaririCode\Transformer\Rule\String\PascalCaseRule;
-use KaririCode\Transformer\Rule\String\RepeatRule;
-use KaririCode\Transformer\Rule\String\ReverseRule;
-use KaririCode\Transformer\Rule\String\SnakeCaseRule;
-use KaririCode\Transformer\Rule\Structure\FlattenRule;
-use KaririCode\Transformer\Rule\Structure\GroupByRule;
-use KaririCode\Transformer\Rule\Structure\PluckRule;
-use KaririCode\Transformer\Rule\Structure\RenameKeysRule;
-use KaririCode\Transformer\Rule\Structure\UnflattenRule;
+use KaririCode\Transformer\Exception\ConfigurationException;
+
+// ── Provider: TransformerServiceProvider ─────────────────────────────
+// Registers the transformer in a kariricode/contract container.
+// ─────────────────────────────────────────────────────────────────────
 
 /**
- * Registers all 32 built-in transformation rules.
+ * Binds, as singletons, the rule registry with the built-in rules, the
+ * engine and the AttributeTransformer. The AttributeTransformer takes the
+ * PropertyInspector and the PropertyChangeApplier the container holds,
+ * so bind them (kariricode/property-inspector's implementations) before
+ * resolving it.
  *
- * @package KaririCode\Transformer\Provider
- * @author  Walmir Silva <walmir.silva@kariricode.org>
- * @since   3.1.0 ARFA 1.3
+ * Preconditions: services are resolved after register(); a binding that
+ * resolves to the wrong type throws ConfigurationException.
+ *
+ * Thread-safety: immutable; the container owns the instances.
+ *
+ * Side effects: register() adds bindings to the container.
+ *
+ * Example:
+ *
+ *     (new TransformerServiceProvider())->register($container);
+ *     $engine = $container->get(TransformerEngine::class);
+ *
+ * References: kariricode/contract DI\ServiceProvider; ADR-006.
  */
-final class TransformerServiceProvider
+final readonly class TransformerServiceProvider implements ServiceProvider
 {
-    public function createRegistry(): InMemoryRuleRegistry
-    {
-        $registry = new InMemoryRuleRegistry();
-        $this->registerBuiltinRules($registry);
+    public function __construct(
+        private TransformerConfiguration $configuration = new TransformerConfiguration(),
+        private ?Closure $observer = null,
+    ) {}
 
-        return $registry;
+    #[\Override]
+    public function register(BindableContainer $container): void
+    {
+        $container->bind(abstract: RuleRegistry::class, concrete: static fn(): RuleRegistry => InMemoryRuleRegistry::withDefaults(), singleton: true);
+        $container->bind(abstract: TransformerEngine::class, concrete: fn(): TransformerEngine => new TransformerEngine(
+            registry: self::service($container, RuleRegistry::class),
+            configuration: $this->configuration,
+            observer: $this->observer,
+        ), singleton: true);
+        $container->bind(abstract: AttributeTransformer::class, concrete: static fn(): AttributeTransformer => new AttributeTransformer(
+            engine: self::service($container, TransformerEngine::class),
+            inspector: self::service($container, PropertyInspector::class),
+            applier: self::service($container, PropertyChangeApplier::class),
+        ), singleton: true);
     }
 
-    public function createEngine(?TransformerConfiguration $configuration = null): TransformerEngine
+    #[\Override]
+    public function boot(): void {}
+
+    /**
+     * @template T of object
+     *
+     * @param class-string<T> $id
+     *
+     * @return T
+     */
+    private static function service(BindableContainer $container, string $id): object
     {
-        return new TransformerEngine($this->createRegistry(), $configuration);
-    }
+        /** @var mixed $service */
+        $service = $container->get($id);
 
-    public function createAttributeTransformer(?TransformerConfiguration $configuration = null): AttributeTransformer
-    {
-        return new AttributeTransformer($this->createEngine($configuration));
-    }
-
-    private function registerBuiltinRules(InMemoryRuleRegistry $registry): void
-    {
-        // ── String (7) ────────────────────────────────────────────
-        $registry->register('camel_case', new CamelCaseRule());
-        $registry->register('snake_case', new SnakeCaseRule());
-        $registry->register('kebab_case', new KebabCaseRule());
-        $registry->register('pascal_case', new PascalCaseRule());
-        $registry->register('mask', new MaskRule());
-        $registry->register('reverse', new ReverseRule());
-        $registry->register('repeat', new RepeatRule());
-
-        // ── Data (5) ──────────────────────────────────────────────
-        $registry->register('json_encode', new JsonEncodeRule());
-        $registry->register('json_decode', new JsonDecodeRule());
-        $registry->register('csv_to_array', new CsvToArrayRule());
-        $registry->register('array_to_key_value', new ArrayToKeyValueRule());
-        $registry->register('implode', new ImplodeRule());
-
-        // ── Numeric (4) ───────────────────────────────────────────
-        $registry->register('currency_format', new CurrencyFormatRule());
-        $registry->register('percentage', new PercentageRule());
-        $registry->register('ordinal', new OrdinalRule());
-        $registry->register('number_to_words', new NumberToWordsRule());
-
-        // ── Date (4) ──────────────────────────────────────────────
-        $registry->register('date_to_timestamp', new DateToTimestampRule());
-        $registry->register('date_to_iso8601', new DateToIso8601Rule());
-        $registry->register('relative_date', new RelativeDateRule());
-        $registry->register('age', new AgeRule());
-
-        // ── Structure (5) ─────────────────────────────────────────
-        $registry->register('flatten', new FlattenRule());
-        $registry->register('unflatten', new UnflattenRule());
-        $registry->register('pluck', new PluckRule());
-        $registry->register('group_by', new GroupByRule());
-        $registry->register('rename_keys', new RenameKeysRule());
-
-        // ── Brazilian (4) ─────────────────────────────────────────
-        $registry->register('cpf_to_digits', new CpfToDigitsRule());
-        $registry->register('cnpj_to_digits', new CnpjToDigitsRule());
-        $registry->register('cep_to_digits', new CepToDigitsRule());
-        $registry->register('phone_format', new PhoneFormatRule());
-
-        // ── Encoding (3) ──────────────────────────────────────────
-        $registry->register('base64_encode', new Base64EncodeRule());
-        $registry->register('base64_decode', new Base64DecodeRule());
-        $registry->register('hash', new HashRule());
+        return $service instanceof $id ? $service : throw ConfigurationException::invalidBinding(id: $id, type: get_debug_type($service));
     }
 }

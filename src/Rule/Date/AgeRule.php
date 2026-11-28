@@ -6,36 +6,45 @@ namespace KaririCode\Transformer\Rule\Date;
 
 use KaririCode\Transformer\Contract\TransformationContext;
 use KaririCode\Transformer\Contract\TransformationRule;
+use KaririCode\Transformer\Core\DateValue;
 
-/** Transforms a birth date into an integer age. Parameters: from (string, 'Y-m-d'). */
+// ── Rule: AgeRule ────────────────────────────────────────────────────
+// Reads a date of birth as an age in whole years.
+// ─────────────────────────────────────────────────────────────────────
+
 /**
- * Computes the age in years from a date string.
+ * Parses the string strictly in 'from' (Y-m-d unless set) in 'timezone'
+ * (UTC unless set) and returns the whole years from that date to 'now'
+ * (the current time unless a DateTimeInterface is given). Dates after
+ * 'now' and strings that are not a real date are returned unchanged.
  *
- * @package KaririCode\Transformer\Rule\Date
- * @author  Walmir Silva <walmir.silva@kariricode.org>
- * @since   3.1.0 ARFA 1.3
+ * Preconditions: 'from' uses DateTimeImmutable::createFromFormat() letters; 'timezone' is an identifier DateTimeZone accepts; 'now', when given, is a DateTimeInterface.
+ *
+ * Thread-safety: stateless.
+ *
+ * Side effects: none.
+ *
+ * Example:
+ *
+ *     ['birth_date' => ['age']]; // '1990-03-07' → 36 on 2026-11-28
+ *
+ * References: ADR-008; SPEC-002 §4.
  */
 final readonly class AgeRule implements TransformationRule
 {
     #[\Override]
     public function transform(mixed $value, TransformationContext $context): mixed
     {
-        if (! \is_string($value) || trim($value) === '') {
-            return $value;
-        }
-        $format = (\is_string($_p = $context->getParameter('from', 'Y-m-d')) ? $_p : '');
-        $date = \DateTimeImmutable::createFromFormat($format, $value);
-        if ($date === false) {
-            return $value;
-        }
+        $from = $context->stringParameter('from', 'Y-m-d');
+        $zone = DateValue::zone($context);
+        $now = DateValue::now($context, $zone);
+        $date = is_string($value) ? DateValue::parse(value: $value, format: $from, zone: $zone) : null;
 
-        $now = new \DateTimeImmutable('now', new \DateTimeZone('UTC'));
-
-        return $date->diff($now)->y;
+        return $date === null || $date > $now ? $value : $date->diff($now)->y;
     }
 
     #[\Override]
-    public function getName(): string
+    public function name(): string
     {
         return 'date.age';
     }

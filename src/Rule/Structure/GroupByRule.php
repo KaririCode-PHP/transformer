@@ -6,44 +6,65 @@ namespace KaririCode\Transformer\Rule\Structure;
 
 use KaririCode\Transformer\Contract\TransformationContext;
 use KaririCode\Transformer\Contract\TransformationRule;
+use KaririCode\Transformer\Core\DataPath;
 
-/** Groups array elements by a field value. Parameters: field (string). */
+// ── Rule: GroupByRule ────────────────────────────────────────────────
+// Groups the records of a list by one of their fields.
+// ─────────────────────────────────────────────────────────────────────
+
 /**
- * Groups an array of arrays by a configurable key.
+ * Groups the records under the value of their 'field', a dotted path
+ * into nested arrays, keeping their order inside each group. The list
+ * is returned unchanged when a record is not an array or its field is
+ * missing or not an integer or a string, rather than dropping records
+ * or casting the values.
  *
- * @package KaririCode\Transformer\Rule\Structure
- * @author  Walmir Silva <walmir.silva@kariricode.org>
- * @since   3.1.0 ARFA 1.3
+ * Preconditions: 'field' is a string.
+ *
+ * Thread-safety: stateless.
+ *
+ * Side effects: none.
+ *
+ * Example:
+ *
+ *     ['orders' => [['group_by', ['field' => 'status']]]]
+ *
+ * References: SPEC-001 §4; SPEC-002 §6.
  */
 final readonly class GroupByRule implements TransformationRule
 {
     #[\Override]
     public function transform(mixed $value, TransformationContext $context): mixed
     {
-        if (! \is_array($value)) {
-            return $value;
-        }
-        $field = (\is_string($_p = $context->getParameter('field', '')) ? $_p : '');
-        if ($field === '') {
+        $field = $context->stringParameter('field');
+
+        if (!is_array($value)) {
             return $value;
         }
 
         $groups = [];
-        foreach ($value as $item) {
-            if (\is_array($item) && \array_key_exists($field, $item)) {
-                $raw = $item[$field];
-                $key = \is_int($raw) || \is_string($raw) ? (string) $raw : '';
-                if ($key !== '') {
-                    $groups[$key][] = $item;
-                }
+
+        /** @var mixed $record */
+        foreach ($value as $record) {
+            if (!is_array($record)) {
+                return $value;
             }
+
+            /** @var mixed $key */
+            $key = DataPath::value($record, $field);
+
+            if (!is_int($key) && !is_string($key)) {
+                return $value;
+            }
+
+            $groups[$key][] = $record;
         }
 
         return $groups;
     }
 
     #[\Override]
-    public function getName(): string
+    public function name(): string
     {
         return 'structure.group_by';
     }

@@ -6,36 +6,45 @@ namespace KaririCode\Transformer\Rule\Structure;
 
 use KaririCode\Transformer\Contract\TransformationContext;
 use KaririCode\Transformer\Contract\TransformationRule;
+use KaririCode\Transformer\Core\DataPath;
 
-/** Extracts a single field from each element: [['id'=>1,'name'=>'A']] → ['A']. Parameters: field. */
+// ── Rule: PluckRule ──────────────────────────────────────────────────
+// Takes one field out of every record of a list.
+// ─────────────────────────────────────────────────────────────────────
+
 /**
- * Extracts a single column from an array of arrays.
+ * Returns the list of each record's 'field', a dotted path into nested
+ * arrays (a key containing dots is matched first); records that are not
+ * arrays or lack the field give null, so positions are kept.
  *
- * @package KaririCode\Transformer\Rule\Structure
- * @author  Walmir Silva <walmir.silva@kariricode.org>
- * @since   3.1.0 ARFA 1.3
+ * Preconditions: 'field' is a string.
+ *
+ * Thread-safety: stateless.
+ *
+ * Side effects: none.
+ *
+ * Example:
+ *
+ *     ['emails' => [['pluck', ['field' => 'contact.email']]]]
+ *
+ * References: SPEC-001 §4; SPEC-002 §6.
  */
 final readonly class PluckRule implements TransformationRule
 {
     #[\Override]
     public function transform(mixed $value, TransformationContext $context): mixed
     {
-        if (! \is_array($value)) {
-            return $value;
-        }
-        $field = (\is_string($_p = $context->getParameter('field', '')) ? $_p : '');
-        if ($field === '') {
+        $field = $context->stringParameter('field');
+
+        if (!is_array($value)) {
             return $value;
         }
 
-        return array_values(array_map(
-            static fn (mixed $item): mixed => \is_array($item) ? ($item[$field] ?? null) : null,
-            $value,
-        ));
+        return array_values(array_map(static fn(mixed $record): mixed => is_array($record) ? DataPath::value($record, $field) : null, $value));
     }
 
     #[\Override]
-    public function getName(): string
+    public function name(): string
     {
         return 'structure.pluck';
     }

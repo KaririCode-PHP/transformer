@@ -7,29 +7,36 @@ namespace KaririCode\Transformer\Rule\Brazilian;
 use KaririCode\Transformer\Contract\TransformationContext;
 use KaririCode\Transformer\Contract\TransformationRule;
 
-/** Strips formatting from CEP: "63100-000" → "63100000". */
+// ── Rule: CepToDigitsRule ────────────────────────────────────────────
+// Writes a CEP as its 8 digits.
+// ─────────────────────────────────────────────────────────────────────
+
 /**
- * Extracts only digits from a CEP (Brazilian postal code) string.
+ * Removes the hyphen from a CEP written bare or formatted (63100-000,
+ * 63100000); any other string is returned unchanged.
  *
- * @package KaririCode\Transformer\Rule\Brazilian
- * @author  Walmir Silva <walmir.silva@kariricode.org>
- * @since   3.1.0 ARFA 1.3
+ * Preconditions: none; other types are returned unchanged.
+ *
+ * Thread-safety: stateless.
+ *
+ * Side effects: none.
+ *
+ * Example:
+ *
+ *     ['cep' => ['cep_to_digits']]
+ *
+ * References: Correios, CEP; SPEC-002 §7.
  */
 final readonly class CepToDigitsRule implements TransformationRule
 {
     #[\Override]
     public function transform(mixed $value, TransformationContext $context): mixed
     {
-        if (! \is_string($value)) {
-            return $value;
-        }
-        $digits = preg_replace('/\D/', '', $value) ?? '';
-
-        return \strlen($digits) === 8 ? $digits : $value;
+        return is_string($value) && preg_match('/\A\d{5}-?\d{3}\z/', $value) === 1 ? str_replace(search: '-', replace: '', subject: $value) : $value;
     }
 
     #[\Override]
-    public function getName(): string
+    public function name(): string
     {
         return 'brazilian.cep_to_digits';
     }

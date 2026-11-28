@@ -4,17 +4,34 @@ declare(strict_types=1);
 
 namespace KaririCode\Transformer\Event;
 
+// ── Event: TransformationStartedEvent ────────────────────────────────
+// Announces a transformation before its first rule runs.
+// ─────────────────────────────────────────────────────────────────────
+
 /**
- * Event emitted when a transformation operation begins.
+ * Tells the observer which fields are about to be transformed and when
+ * (Unix time in seconds, with microseconds). It carries field names only,
+ * never values.
  *
- * @package KaririCode\Transformer\Event
- * @author  Walmir Silva <walmir.silva@kariricode.org>
- * @since   3.1.0 ARFA 1.3
+ * Preconditions: none.
+ *
+ * Thread-safety: immutable.
+ *
+ * Side effects: none.
+ *
+ * Example:
+ *
+ *     $engine = new TransformerEngine(observer: static fn (object $event) => $dispatcher->dispatch($event));
+ *
+ * References: ADR-006; ARFA 1.3 P5.
  */
 final readonly class TransformationStartedEvent
 {
-    /** @param list<string> $fields */
-    public function __construct(public array $fields, public float $timestamp = 0)
-    {
-    }
+    /**
+     * @param list<string> $fields
+     */
+    public function __construct(
+        public array $fields,
+        public float $timestamp,
+    ) {}
 }

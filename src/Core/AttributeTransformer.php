@@ -4,50 +4,64 @@ declare(strict_types=1);
 
 namespace KaririCode\Transformer\Core;
 
-use KaririCode\PropertyInspector\AttributeAnalyzer;
-use KaririCode\PropertyInspector\Utility\PropertyInspector;
+use KaririCode\Contract\Inspection\PropertyChangeApplier;
+use KaririCode\Contract\Inspection\PropertyInspector;
 use KaririCode\Transformer\Attribute\Transform;
-use KaririCode\Transformer\Result\TransformationResult;
+use KaririCode\Transformer\Result\TransformedObject;
+
+// ── Core: AttributeTransformer ───────────────────────────────────────
+// Transforms an object by the #[Transform] attributes on its properties.
+// ─────────────────────────────────────────────────────────────────────
 
 /**
- * Transforms objects by reading #[Transform] attributes from properties.
+ * Reads an object's #[Transform] attributes through a kariricode/contract
+ * PropertyInspector, transforms the property values with the engine, and
+ * writes the changed values to a copy through a PropertyChangeApplier,
+ * so readonly DTOs work (kariricode/property-inspector 3 implements
+ * both). The object passed in is never modified.
  *
- * Uses kariricode/property-inspector for reflection caching and
- * attribute scanning — eliminates manual ReflectionClass loops.
+ * Preconditions: the inspector decides what an unreadable property means;
+ * kariricode/property-inspector's ReflectionPropertyInspector throws for
+ * an uninitialized one.
  *
- * @package KaririCode\Transformer\Core
- * @author  Walmir Silva <walmir.silva@kariricode.org>
- * @since   3.2.0 ARFA 1.3
+ * Thread-safety: immutable; one AttributeRules per call.
+ *
+ * Side effects: none beyond the inspector's reads, the applier's copy and
+ * the engine's observer.
+ *
+ * Example:
+ *
+ *     $transformer = new AttributeTransformer(new TransformerEngine(), new ReflectionPropertyInspector(), new ReflectionChangeApplier());
+ *     $converted = $transformer->transform($signUp)->object;
+ *
+ * References: kariricode/property-inspector ADR-006, ADR-008 and ADR-009; ADR-003.
  */
 final readonly class AttributeTransformer
 {
-    private PropertyInspector $inspector;
+    public function __construct(
+        private TransformerEngine $engine,
+        private PropertyInspector $inspector,
+        private PropertyChangeApplier $applier,
+    ) {}
 
-    public function __construct(private TransformerEngine $engine)
+    public function transform(object $object): TransformedObject
     {
-        $this->inspector = new PropertyInspector(
-            new AttributeAnalyzer(Transform::class),
-        );
-    }
+        $rules = new AttributeRules();
+        $this->inspector->inspect(object: $object, attributeClass: Transform::class, handler: $rules);
+        $values = $rules->values();
+        $result = $this->engine->transform($values, $rules->fieldRules());
+        $changes = [];
 
-    public function transform(object $object): TransformationResult
-    {
-        $handler = new TransformAttributeHandler();
+        /** @var mixed $original */
+        foreach ($values as $property => $original) {
+            /** @var mixed $value */
+            $value = $result->get($property);
 
-        /** @var TransformAttributeHandler $handler */
-        $handler = $this->inspector->inspect($object, $handler);
+            if ($value !== $original) {
+                $changes += [$property => $value];
+            }
+        }
 
-        /** @var array<string, list<string|array{0: string, 1: array<string, mixed>}>> $fieldRules */
-        $fieldRules = $handler->getFieldRules();
-
-        $result = $this->engine->transform(
-            $handler->getProcessedPropertyValues(),
-            $fieldRules,
-        );
-
-        $handler->setProcessedValues($result->getTransformedData());
-        $handler->applyChanges($object);
-
-        return $result;
+        return new TransformedObject(object: $changes === [] ? $object : $this->applier->applyChanges($object, $changes), result: $result);
     }
 }

@@ -6,36 +6,55 @@ namespace KaririCode\Transformer\Rule\Numeric;
 
 use KaririCode\Transformer\Contract\TransformationContext;
 use KaririCode\Transformer\Contract\TransformationRule;
+use KaririCode\Transformer\Core\IntegerParameter;
+use KaririCode\Transformer\Core\NumericValue;
+
+// ── Rule: PercentageRule ─────────────────────────────────────────────
+// Writes a ratio as a percentage.
+// ─────────────────────────────────────────────────────────────────────
 
 /**
- * Converts a decimal to percentage string: 0.85 → "85.00%".
+ * Multiplies numbers and numeric strings by 100 and writes them with
+ * 'decimals' places (2 unless set), 'dec_point' ("." unless set) and
+ * 'thousands' ("," unless set), followed by 'suffix' ("%" unless set):
+ * 0.125 becomes "12.50%". A value that rounds to zero has no sign.
+ * Non-numbers are returned unchanged.
  *
- * Parameters: decimals (int, 2), suffix (string, '%').
- */
-/**
- * Formats a numeric value as a percentage string.
+ * Preconditions: 'decimals' is an integer of 0 or more; 'dec_point', 'thousands' and 'suffix' are strings.
  *
- * @package KaririCode\Transformer\Rule\Numeric
- * @author  Walmir Silva <walmir.silva@kariricode.org>
- * @since   3.1.0 ARFA 1.3
+ * Thread-safety: stateless.
+ *
+ * Side effects: none.
+ *
+ * Example:
+ *
+ *     ['conversion' => [['percentage', ['decimals' => 1, 'dec_point' => ',']]]]
+ *
+ * References: PHP number_format(); SPEC-002 §5.
  */
 final readonly class PercentageRule implements TransformationRule
 {
     #[\Override]
     public function transform(mixed $value, TransformationContext $context): mixed
     {
-        if (! is_numeric($value)) {
+        $decimals = IntegerParameter::atLeast(context: $context, name: 'decimals', default: 2, minimum: 0);
+        $point = $context->stringParameter('dec_point', '.');
+        $thousands = $context->stringParameter('thousands', ',');
+        $suffix = $context->stringParameter('suffix', '%');
+        $number = NumericValue::of($value);
+
+        if ($number === null) {
             return $value;
         }
 
-        $decimals = (\is_int($_p = $context->getParameter('decimals', 2)) ? $_p : 0);
-        $suffix = (\is_string($_p = $context->getParameter('suffix', '%')) ? $_p : '');
+        $rounded = round((float) $number * 100.0, $decimals);
+        $text = number_format(num: abs($rounded), decimals: $decimals, decimal_separator: $point, thousands_separator: $thousands);
 
-        return number_format((float) $value * 100.0, $decimals) . $suffix;
+        return ($rounded < 0 ? '-' : '') . $text . $suffix;
     }
 
     #[\Override]
-    public function getName(): string
+    public function name(): string
     {
         return 'numeric.percentage';
     }

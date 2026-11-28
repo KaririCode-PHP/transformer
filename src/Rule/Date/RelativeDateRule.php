@@ -6,55 +6,68 @@ namespace KaririCode\Transformer\Rule\Date;
 
 use KaririCode\Transformer\Contract\TransformationContext;
 use KaririCode\Transformer\Contract\TransformationRule;
+use KaririCode\Transformer\Core\DateValue;
+
+// ── Rule: RelativeDateRule ───────────────────────────────────────────
+// Describes a date relative to now, in English.
+// ─────────────────────────────────────────────────────────────────────
 
 /**
- * Transforms a date string to a relative expression (e.g. "2 days ago", "in 3 hours").
+ * Parses the string strictly in 'from' (Y-m-d H:i:s unless set) in
+ * 'timezone' (UTC unless set) and describes its distance from 'now'
+ * (the current time unless a DateTimeInterface is given): "just now"
+ * under a minute, then "3 minutes ago", "1 hour ago", "2 days from
+ * now", counting a month as 30 days and a year as 365. Strings that
+ * are not a real date are returned unchanged.
  *
- * Parameters: from (string, 'Y-m-d H:i:s'), now (\DateTimeInterface|null).
- */
-/**
- * Converts a date string to a relative human-readable string.
+ * Preconditions: 'from' uses DateTimeImmutable::createFromFormat() letters; 'timezone' is an identifier DateTimeZone accepts; 'now', when given, is a DateTimeInterface.
  *
- * @package KaririCode\Transformer\Rule\Date
- * @author  Walmir Silva <walmir.silva@kariricode.org>
- * @since   3.1.0 ARFA 1.3
+ * Thread-safety: stateless.
+ *
+ * Side effects: none.
+ *
+ * Example:
+ *
+ *     ['commented_at' => ['relative_date']]
+ *
+ * References: ADR-008; SPEC-002 §4.
  */
 final readonly class RelativeDateRule implements TransformationRule
 {
     #[\Override]
     public function transform(mixed $value, TransformationContext $context): mixed
     {
-        if (! \is_string($value) || trim($value) === '') {
+        $from = $context->stringParameter('from', 'Y-m-d H:i:s');
+        $zone = DateValue::zone($context);
+        $now = DateValue::now($context, $zone);
+        $date = is_string($value) ? DateValue::parse(value: $value, format: $from, zone: $zone) : null;
+
+        if ($date === null) {
             return $value;
         }
 
-        $format = (\is_string($_p = $context->getParameter('from', 'Y-m-d H:i:s')) ? $_p : '');
-        $date = \DateTimeImmutable::createFromFormat($format, $value);
-        if ($date === false) {
-            return $value;
-        }
-
-        $now = $context->getParameter('now') instanceof \DateTimeInterface
-            ? $context->getParameter('now')
-            : new \DateTimeImmutable('now', new \DateTimeZone('UTC'));
-
-        $diff = $now->getTimestamp() - $date->getTimestamp();
-        $abs = $diff >= 0 ? $diff : -$diff;
-        $suffix = $diff >= 0 ? 'ago' : 'from now';
-
-        return match (true) {
-            $abs < 60 => 'just now',
-            $abs < 3600 => intdiv($abs, 60) . ' minute' . (intdiv($abs, 60) !== 1 ? 's' : '') . " {$suffix}",
-            $abs < 86400 => intdiv($abs, 3600) . ' hour' . (intdiv($abs, 3600) !== 1 ? 's' : '') . " {$suffix}",
-            $abs < 2592000 => intdiv($abs, 86400) . ' day' . (intdiv($abs, 86400) !== 1 ? 's' : '') . " {$suffix}",
-            $abs < 31536000 => intdiv($abs, 2592000) . ' month' . (intdiv($abs, 2592000) !== 1 ? 's' : '') . " {$suffix}",
-            default => intdiv($abs, 31536000) . ' year' . (intdiv($abs, 31536000) !== 1 ? 's' : '') . " {$suffix}",
-        };
+        return self::phrase(abs($now->getTimestamp() - $date->getTimestamp()), $date->diff($now)->invert === 1 ? 'from now' : 'ago');
     }
 
     #[\Override]
-    public function getName(): string
+    public function name(): string
     {
         return 'date.relative';
+    }
+
+    /** @var list<array{int, string}> unit lengths in seconds, longest first */
+    private const array UNITS = [[31_536_000, 'year'], [2_592_000, 'month'], [86_400, 'day'], [3_600, 'hour'], [60, 'minute']];
+
+    private static function phrase(int $seconds, string $direction): string
+    {
+        foreach (self::UNITS as [$length, $unit]) {
+            if ($seconds >= $length) {
+                $count = intdiv($seconds, $length);
+
+                return $count . ' ' . $unit . ($count === 1 ? '' : 's') . ' ' . $direction;
+            }
+        }
+
+        return 'just now';
     }
 }

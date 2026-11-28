@@ -6,60 +6,94 @@ namespace KaririCode\Transformer\Rule\Data;
 
 use KaririCode\Transformer\Contract\TransformationContext;
 use KaririCode\Transformer\Contract\TransformationRule;
+use KaririCode\Transformer\Core\CsvReader;
+use KaririCode\Transformer\Exception\InvalidRuleException;
+
+// ── Rule: CsvToArrayRule ─────────────────────────────────────────────
+// Reads CSV text as a list of rows.
+// ─────────────────────────────────────────────────────────────────────
 
 /**
- * Parses a CSV string into an array of rows.
+ * Reads the string as RFC 4180 CSV — quoted fields may hold separators,
+ * line breaks and doubled enclosures — with 'separator' ("," unless
+ * set) and 'enclosure' ('"' unless set). With 'header' (true unless
+ * set) the first record names the fields and every other record becomes
+ * a map from those names; the names must be unique and every record
+ * must have as many fields, or the string is returned unchanged rather
+ * than padded or cut. Without a header the records come back as lists.
+ * Text that is not CSV (an enclosure left open) is returned unchanged.
  *
- * Parameters: separator (string, ','), enclosure (string, '"'), header (bool, true).
+ * Preconditions: 'separator' and 'enclosure' are different single-byte characters, neither a line break; 'header' is a boolean.
  *
- * @package KaririCode\Transformer\Rule\Data
- * @author  Walmir Silva <walmir.silva@kariricode.org>
- * @since   3.1.0 ARFA 1.3
+ * Thread-safety: stateless.
+ *
+ * Side effects: none.
+ *
+ * Example:
+ *
+ *     ['import' => [['csv_to_array', ['separator' => ';']]]]
+ *
+ * References: RFC 4180; ADR-008; SPEC-002 §2.
  */
 final readonly class CsvToArrayRule implements TransformationRule
 {
     #[\Override]
     public function transform(mixed $value, TransformationContext $context): mixed
     {
-        if (! \is_string($value)) {
+        $separator = self::character(context: $context, name: 'separator', default: ',');
+        $enclosure = self::character(context: $context, name: 'enclosure', default: '"');
+        $header = $context->boolParameter('header', true);
+
+        if ($separator === $enclosure) {
+            throw InvalidRuleException::invalidParameter(field: $context->field, parameter: 'enclosure', expected: 'a character other than the separator');
+        }
+
+        $records = is_string($value) ? CsvReader::records(csv: $value, separator: $separator, enclosure: $enclosure) : null;
+
+        if ($records === null) {
             return $value;
         }
 
-        $separator = (\is_string($_p = $context->getParameter('separator', ',')) ? $_p : '');
-        $enclosure = (\is_string($_p = $context->getParameter('enclosure', '"')) ? $_p : '');
-        $hasHeader = (\is_bool($_p = $context->getParameter('header', true)) && $_p);
-
-        $lines = array_filter(
-            explode("\n", str_replace("\r\n", "\n", $value)),
-            static fn (string $l): bool => trim($l) !== '',
-        );
-
-        if ($lines === []) {
-            return [];
-        }
-
-        $rows = array_map(
-            static fn (string $line): array => str_getcsv($line, $separator, $enclosure, escape: '\\'),
-            $lines,
-        );
-
-        if ($hasHeader && \count($rows) > 1) {
-            $headers = array_shift($rows);
-            /** @var list<string> $headers */
-            $headers = array_map(static fn (mixed $h): string => (string) $h, $headers);
-
-            return array_map(
-                static fn (array $row): array => array_combine($headers, array_pad($row, \count($headers), '')),
-                $rows,
-            );
-        }
-
-        return $rows;
+        return $header ? self::named($records) ?? $value : $records;
     }
 
     #[\Override]
-    public function getName(): string
+    public function name(): string
     {
         return 'data.csv_to_array';
+    }
+
+    private static function character(TransformationContext $context, string $name, string $default): string
+    {
+        $character = $context->stringParameter($name, $default);
+
+        return strlen($character) === 1 && $character !== "\r" && $character !== "\n"
+            ? $character
+            : throw InvalidRuleException::invalidParameter(field: $context->field, parameter: $name, expected: 'one single-byte character other than a line break', given: var_export($character, true));
+    }
+
+    /**
+     * @param list<list<string>> $records
+     *
+     * @return list<array<string, string>>|null null when the records do not fit the header
+     */
+    private static function named(array $records): ?array
+    {
+        $names = array_shift($records) ?? [];
+        $rows = [];
+
+        if (count(array_unique($names)) !== count($names)) {
+            return null;
+        }
+
+        foreach ($records as $record) {
+            if (count($record) !== count($names)) {
+                return null;
+            }
+
+            $rows[] = array_combine($names, $record);
+        }
+
+        return $rows;
     }
 }

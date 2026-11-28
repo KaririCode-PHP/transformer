@@ -6,40 +6,64 @@ namespace KaririCode\Transformer\Rule\Structure;
 
 use KaririCode\Transformer\Contract\TransformationContext;
 use KaririCode\Transformer\Contract\TransformationRule;
+use KaririCode\Transformer\Exception\InvalidRuleException;
 
-/** Renames array keys. Parameters: map (array<string, string>). */
+// ── Rule: RenameKeysRule ─────────────────────────────────────────────
+// Renames the keys of an array.
+// ─────────────────────────────────────────────────────────────────────
+
 /**
- * Renames keys in an associative array according to a mapping.
+ * Renames the top-level keys the 'map' lists (old key => new key) and
+ * keeps the others and the order. When a new name meets a key that is
+ * already there, the array is returned unchanged instead of one value
+ * replacing the other; swapping two names works.
  *
- * @package KaririCode\Transformer\Rule\Structure
- * @author  Walmir Silva <walmir.silva@kariricode.org>
- * @since   3.1.0 ARFA 1.3
+ * Preconditions: 'map' is a non-empty array of integers or strings.
+ *
+ * Thread-safety: stateless.
+ *
+ * Side effects: none.
+ *
+ * Example:
+ *
+ *     ['payload' => [['rename_keys', ['map' => ['e-mail' => 'email']]]]]
+ *
+ * References: SPEC-002 §6.
  */
 final readonly class RenameKeysRule implements TransformationRule
 {
     #[\Override]
     public function transform(mixed $value, TransformationContext $context): mixed
     {
-        if (! \is_array($value)) {
-            return $value;
+        $map = $context->arrayParameter('map');
+
+        if ($map === [] || !array_all($map, static fn(mixed $name): bool => is_int($name) || is_string($name))) {
+            throw InvalidRuleException::invalidParameter(field: $context->field, parameter: 'map', expected: 'a non-empty map of keys to new names');
         }
-        $map = (array) $context->getParameter('map', []);
-        if ($map === []) {
+
+        if (!is_array($value)) {
             return $value;
         }
 
-        $result = [];
-        foreach ($value as $key => $val) {
-            $mapped = $map[$key] ?? null;
-            $newKey = (\is_string($mapped) || \is_int($mapped)) ? (string) $mapped : $key;
-            $result[$newKey] = $val;
+        /** @var array<array-key, int|string> $map */
+        $renamed = [];
+
+        /** @var mixed $item */
+        foreach ($value as $key => $item) {
+            $name = $map[$key] ?? $key;
+
+            if (array_key_exists($name, $renamed)) {
+                return $value;
+            }
+
+            $renamed += [$name => $item];
         }
 
-        return $result;
+        return $renamed;
     }
 
     #[\Override]
-    public function getName(): string
+    public function name(): string
     {
         return 'structure.rename_keys';
     }

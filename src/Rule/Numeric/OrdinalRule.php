@@ -6,38 +6,55 @@ namespace KaririCode\Transformer\Rule\Numeric;
 
 use KaririCode\Transformer\Contract\TransformationContext;
 use KaririCode\Transformer\Contract\TransformationRule;
+use KaririCode\Transformer\Core\NumericValue;
 
-/** Converts an integer to ordinal string: 1 → "1st", 2 → "2nd", 23 → "23rd". */
+// ── Rule: OrdinalRule ────────────────────────────────────────────────
+// Writes an integer as an English ordinal.
+// ─────────────────────────────────────────────────────────────────────
+
 /**
- * Converts an integer to its ordinal string (1st, 2nd, 3rd…).
+ * Appends the English ordinal suffix to integers and integral numeric
+ * strings: 1st, 2nd, 3rd, 4th, 11th, 12th, 13th, 21st, 112th; negative
+ * numbers keep their sign (-1st). Fractions and non-numbers are
+ * returned unchanged.
  *
- * @package KaririCode\Transformer\Rule\Numeric
- * @author  Walmir Silva <walmir.silva@kariricode.org>
- * @since   3.1.0 ARFA 1.3
+ * Preconditions: none; other values are returned unchanged.
+ *
+ * Thread-safety: stateless.
+ *
+ * Side effects: none.
+ *
+ * Example:
+ *
+ *     ['position' => ['ordinal']]
+ *
+ * References: SPEC-002 §5.
  */
 final readonly class OrdinalRule implements TransformationRule
 {
     #[\Override]
     public function transform(mixed $value, TransformationContext $context): mixed
     {
-        if (! \is_int($value) && ! (\is_string($value) && ctype_digit($value))) {
+        $number = NumericValue::integer($value);
+
+        if ($number === null) {
             return $value;
         }
 
-        $n = (int) $value;
+        $lastTwo = abs($number % 100);
         $suffix = match (true) {
-            \in_array($n % 100, [11, 12, 13]) => 'th',
-            $n % 10 === 1 => 'st',
-            $n % 10 === 2 => 'nd',
-            $n % 10 === 3 => 'rd',
+            $lastTwo >= 11 && $lastTwo <= 13 => 'th',
+            $lastTwo % 10 === 1 => 'st',
+            $lastTwo % 10 === 2 => 'nd',
+            $lastTwo % 10 === 3 => 'rd',
             default => 'th',
         };
 
-        return $n . $suffix;
+        return $number . $suffix;
     }
 
     #[\Override]
-    public function getName(): string
+    public function name(): string
     {
         return 'numeric.ordinal';
     }

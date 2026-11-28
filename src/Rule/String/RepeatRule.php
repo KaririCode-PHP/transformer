@@ -6,30 +6,45 @@ namespace KaririCode\Transformer\Rule\String;
 
 use KaririCode\Transformer\Contract\TransformationContext;
 use KaririCode\Transformer\Contract\TransformationRule;
+use KaririCode\Transformer\Core\IntegerParameter;
+
+// ── Rule: RepeatRule ─────────────────────────────────────────────────
+// Repeats a string, with a separator between copies.
+// ─────────────────────────────────────────────────────────────────────
 
 /**
- * Repeats a string N times with an optional glue.
+ * Joins 'times' copies of the string (2 unless set; 0 gives the empty
+ * string) with 'separator' (the empty string unless set).
  *
- * @package KaririCode\Transformer\Rule\String
- * @author  Walmir Silva <walmir.silva@kariricode.org>
- * @since   3.1.0 ARFA 1.3
+ * Preconditions: 'times' is an integer of 0 or more; 'separator', when given, is a string.
+ *
+ * Thread-safety: stateless.
+ *
+ * Side effects: none.
+ *
+ * Example:
+ *
+ *     ['divider' => [['repeat', ['times' => 3, 'separator' => ' ']]]]
+ *
+ * References: SPEC-002 §1.
  */
 final readonly class RepeatRule implements TransformationRule
 {
     #[\Override]
     public function transform(mixed $value, TransformationContext $context): mixed
     {
-        if (! \is_string($value)) {
+        $times = IntegerParameter::atLeast(context: $context, name: 'times', default: 2, minimum: 0);
+        $separator = $context->stringParameter('separator', '');
+
+        if (!is_string($value)) {
             return $value;
         }
-        $times = max(1, (\is_int($_p = $context->getParameter('times', 2)) ? $_p : 0));
-        $separator = (\is_string($_p = $context->getParameter('separator', '')) ? $_p : '');
 
-        return implode($separator, array_fill(0, $times, $value));
+        return $times === 0 ? '' : $value . str_repeat($separator . $value, $times - 1);
     }
 
     #[\Override]
-    public function getName(): string
+    public function name(): string
     {
         return 'string.repeat';
     }
